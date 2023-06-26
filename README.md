@@ -14,8 +14,8 @@ This directory contains the outputs of `hg38_Snakefile` script.
 ### `mm_output`/
 This directory contains the outputs of `mm10_Snakefile` script.
 
-## Major changes from existing pipeline:
-Followings are the highlights of the updated pipeline:
+## Hightlights of the pipeline:
+Followings are the highlights of the pipeline:
  - The script is implemented in the newest version of snakemake software (v6.8.2).
  - All the tools are updated with the newest version except bowtie and python.
  - fastQC is integrated with rule trim.

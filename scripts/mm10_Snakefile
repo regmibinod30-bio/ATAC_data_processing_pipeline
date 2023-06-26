@@ -1,0 +1,511 @@
+# atac_trim_mm10.snake, March 30, 2018 by hws
+# start from ziped fq files in folder fq (save the original fq files!!)
+# fq files may be named as s01_wt.fq.gz, s01_ko.fq.gz; the 1st 's' is needed! 
+# module load snakemake
+# snakemake -np
+# snakemake --cores 32 &  # for 4 mapping jobs, or more non-mapping jobs
+# snakemake -j 20 --cluster "sbatch  --time=24:00:00 --cpus-per-task={threads} --mem={params.mem}" 2>snake.error&
+# follow thest steps:
+#   mv_count_PE_8mer.sh (in the original fq folder)
+#   mkdir atac_mm10_snake; cd atac_mm10_snake
+#   mkdir fq, then copy the fq file there
+#   cp ~/to_be_doced/snake/atac_trim_mm10_180806.snake .
+#   cp ~/to_be_doced/snake/config.yaml .
+#   if needed: 
+#      sed s/mm10/mm10/g atac_mm10.snake
+#   identify the largest fq file and replace in 3 rules:
+#     - dist
+#     - macs1 anno
+#     - macs1_m anno
+#      sed s/s05/s???/g atac_trim_mm10.snake > Snakefile
+#   post snake clean-up: post_snake_atac2.sh (modify as needed)
+
+## kan modified on 2019_6_30
+## trim rule: last 3 base were trimmed
+## no mask bed
+# bed_s were used for peak calling 
+# narrow peaks were called
+# no rule dependency
+# ==========================================================================
+# Binod modified on 9_23_2021
+#   - rule all (added some rules).
+#   - added --fastqc flag in the rule trim.
+#   - modifed the rule to filter out 'chrM | chrEBV'.
+#   - replaced the rule repeat masked to filter out the blacklisted genome region.
+#   - added rules for calling macs2.
+#   - modifed and updated .py scripts.
+#   - modifed the rule make_sorted_bed to extract the relevant columns.
+#   - updated config.yaml file separating the mouse and human related parameters.
+# 
+# Binod modified on 12/4/2021
+#   - updated with the newest version of the snakemake (v6.8.2).
+#   - added directory flag.
+#   - updaed all tools with the newest version except python and Bowtie.
+#   - added -t parameter in the fastqc rule.
+#=============================================================================
+
+configfile: "mm_config.yaml"
+SAMPLES, = glob_wildcards("fq/{smp}_r1.fq.gz")
+
+rule all:
+  input:
+    (
+    #"fq_trim/{smp}_r1.fq.gz_trimming_report.txt".format(smp = s),
+    #"fqu/{smp}_R1.fq.gz".format(smp = s),
+    #"fq_trim/{smp}_r1.fq.gz".format(smp = s),
+    #"fast_qc_result_r1/{smp}/".format(smp = s),
+    #"fast_qc_result_r2/{smp}/".format(smp = s),
+    "dist/{smp}.dist".format(smp = s),
+    "dist_out/{smp}.dist.pdf".format(smp = s),
+    "dist_out/{smp}.dist.log.pdf".format(smp = s),
+    #"bowtie/bed_s/{smp}.bed".format(smp = s),
+    #"50_175/bed_m/{smp}.bed".format(smp = s),
+    "50_175/macs1/peak/{smp}_peaks.bed".format(smp = s),
+    "50_175/macs1/bw/{smp}.bw".format(smp = s),
+    "macs1/bw/{smp}.bw".format(smp = s),
+    "homer/bw/{smp}.bw".format(smp = s),
+    "50_175/macs2/bg/{smp}.bg".format(smp = s),
+    #"50_175/macs1/peak/TagCount.xls",
+    #"macs1/peak/{smp}.out".format(smp =s),
+    "macs2/bw/{smp}.bw".format(smp = s)
+    #"fastQC/{smp}/".format(smp = s)
+    #"50_175/macs1_m/bw/{smp}.bw".format(smp = s),
+    #"50_175/macs1_m/peak/TagCount.xls",
+    #"DONE.txt",
+    )
+    for s in SAMPLES
+
+rule trim:
+  input: 
+    a1 = "fq/{smp}_r1.fq.gz",
+    a2="fq/{smp}_r2.fq.gz"
+  output:
+    o1="fq_trim/{smp}_r1_val_1.fq.gz",
+    o2="fq_trim/{smp}_r2_val_2.fq.gz"
+  threads: 12
+  params: 
+    mem="16G",
+    dir="fastQC" 
+  shell:
+    '''
+    module load trimgalore/0.6.7 fastqc/0.11.9
+    mkdir -p fastQC
+    trim_galore --paired -q 30 --length 36 --three_prime_clip_R1 3 \
+    --three_prime_clip_R2 3 -o fq_trim {input.a1} {input.a2} \
+    --fastqc_args "-q -t {threads} --outdir {params.dir}"
+    '''
+
+rule mv_trimmed:
+  input:
+    a1="fq_trim/{smp}_r1_val_1.fq.gz",
+    a2="fq_trim/{smp}_r2_val_2.fq.gz"
+  output:
+    o1="fq_trim/{smp}_r1.fq.gz",
+    o2="fq_trim/{smp}_r2.fq.gz"
+  params: mem="2G"
+  shell:
+    '''
+    mv {input.a1} {output.o1}
+    mv {input.a2} {output.o2}
+    '''
+
+rule unzip_trimmed:
+  input: 
+    a1="fq_trim/{smp}_r1.fq.gz",
+    a2="fq_trim/{smp}_r2.fq.gz"
+  output:
+    o1="fq_trim/{smp}_r1.fq",
+    o2="fq_trim/{smp}_r2.fq"
+  threads: 4
+  params: mem="24G"
+  shell:
+    '''
+    gunzip {input.a1}
+    gunzip {input.a2}
+    ''' 
+
+rule mk_fqu_in:
+  input:
+    a1="fq_trim/{smp}_r1.fq",
+    a2="fq_trim/{smp}_r2.fq"
+  output:
+    "fqu/in_{smp}"
+  params:
+    mem = "2G"
+  shell:
+    '''
+    echo {input.a1} > {output}
+    echo {input.a2} >> {output}
+    '''
+
+rule run_fqu:
+  input: "fqu/in_{smp}"
+  output:
+    o1="fqu/{smp}_R1.fq",
+    o2="fqu/{smp}_R2.fq"
+  threads: 4
+  params:
+    mem = "400G"
+  shell:
+    '''
+    fastuniq -i {input} -t q -o {output.o1} -p {output.o2} -c 0
+    '''
+
+rule gzip:
+  input:
+    b1="fqu/{smp}_R1.fq",
+    b2="fqu/{smp}_R2.fq"
+  output:
+    "fqu/{smp}_R1.fq.gz","fqu/{smp}_R2.fq.gz"
+  threads:2
+  params:
+    mem = "5G"
+  shell:
+    '''
+    gzip {input.b1}
+    gzip {input.b2}
+    '''
+
+rule bowtie_map:
+  input:
+    a1="fqu/{smp}_R1.fq.gz",
+    a2="fqu/{smp}_R2.fq.gz"
+  params:
+    index=config["bowtie_index"]["mm10"],
+    mem = "24G"
+  output:
+    o1="bowtie/{smp}.bowtie",
+    o2="bowtie/{smp}.out"
+  threads: 8
+  shell:
+    '''
+    module load bowtie/1.1.1
+    bowtie -p 8 -v 2 -m 1 -X 2000 {params.index} -1 <(zcat {input.a1}) -2 \
+    <(zcat {input.a2}) {output.o1} 2>{output.o2}
+    '''
+
+rule mk_dist:
+  input:  "bowtie/{smp}.bowtie"
+  output: "dist/{smp}.dist"
+  params:
+    mem = "5G"
+  shell: 
+    '''
+    module load python/2.7
+    PE_frag_dis.py {input} > {output}
+    '''
+
+rule mk_dist_graph:  # this rule does not execute in the pipe
+  input:
+    a1="dist/{smp}.dist" # adjust this so it's the sample of the largest size (so it will finish hte last)
+  output:
+    o1="dist_out/{smp}.dist.pdf",
+    o2="dist_out/{smp}.dist.log.pdf"
+  params:
+    mem = "4G"
+  shell:
+    '''
+    module load R/3.6.0
+    /usr/local/apps/R/3.6/3.6.0/bin/Rscript --vanilla \
+    /data/regmib2/scripts/BDMDS/ATAC_seq/atac.dist.pdf.R {input.a1} {output.o1} {output.o2}
+    '''
+
+rule mk_frag_sized_bt_out:
+  input: "bowtie/{smp}.bowtie"
+  output:
+    o1="50_175/{smp}.bowtie",
+    o2="180_250/{smp}.bowtie"
+  params:
+    mem = "16G"
+  shell:
+    '''
+    module load python/2.7
+    bowtie_size.py {input} 50 175 > {output.o1}
+    bowtie_size.py {input} 180 250 > {output.o2}
+    '''
+
+rule mk_bed:
+  input:
+    a1="bowtie/{smp}.bowtie",
+    a2="50_175/{smp}.bowtie",
+    a3="180_250/{smp}.bowtie"
+  output:
+    o1="bowtie/bed/{smp}.bed",
+    o2="50_175/bed/{smp}.bed",
+    o3="180_250/bed/{smp}.bed"
+  params:
+    mem = "16G"
+  shell:
+    '''
+    module load python/2.7
+    bowtie2bed.py {input.a1} > {output.o1}
+    bowtie2bed.py {input.a2} > {output.o2}
+    bowtie2bed.py {input.a3} > {output.o3}
+    '''
+
+rule mk_sorted_bed:
+  input:
+    a1="bowtie/bed/{smp}.bed",
+    a2="50_175/bed/{smp}.bed",
+    a3="180_250/bed/{smp}.bed"
+  output:
+    o1="bowtie/bed_s/{smp}.bed",
+    o2="50_175/bed_s/{smp}.bed",
+    o3="180_250/bed_s/{smp}.bed"
+  params:
+    mem = "32G"
+  shell:
+    '''
+    module load bedops/2.4.40
+    awk -v OFS="\t" '{{print $1,$2,$3,$4,$5,$6}}' {input.a1} | sort-bed --max-mem 32G -  > {output.o1}
+    awk -v OFS="\t" '{{print $1,$2,$3,$4,$5,$6}}' {input.a2} | sort-bed --max-mem 16G -  > {output.o2}
+    awk -v OFS="\t" '{{print $1,$2,$3,$4,$5,$6}}' {input.a3} | sort-bed --max-mem 16G -  > {output.o3}
+    '''
+
+rule rm_black_list:
+  input: 
+    a1="bowtie/bed_s/{smp}.bed",
+    a2="50_175/bed_s/{smp}.bed",
+    a3="180_250/bed_s/{smp}.bed"
+  output:
+    o1="bowtie/bed_m/{smp}.bed",
+    o2="50_175/bed_m/{smp}.bed",
+    o3="180_250/bed_m/{smp}.bed"
+  params:
+    bl=config["black_list"]["mm10"],
+    mem = "4G"
+  shell:
+    '''
+    module load bedtools/2.30.0
+    bedtools intersect -a {input.a1} -b {params.bl} -v > {output.o1}
+    bedtools intersect -a {input.a2} -b {params.bl} -v > {output.o2}
+    bedtools intersect -a {input.a3} -b {params.bl} -v > {output.o3}
+    '''
+
+rule mk_nochrM_bed:
+  input: 
+    a1="bowtie/bed_m/{smp}.bed",
+    a2="50_175/bed_m/{smp}.bed",
+    a3="180_250/bed_m/{smp}.bed"
+  output:
+    o1="bowtie/bed_noChrM/{smp}.bed",
+    o2="50_175/bed_noChrM/{smp}.bed",
+    o3="180_250/bed_noChrM/{smp}.bed"
+  params:
+    mem = "4G"
+  shell:
+    '''
+    egrep -v 'chrM|chrEBV' {input.a1} > {output.o1}
+    egrep -v 'chrM|chrEBV' {input.a2} > {output.o2}
+    egrep -v 'chrM|chrEBV' {input.a3} > {output.o3}
+    '''
+
+rule mk_homer_folders:
+  input:
+    a1="bowtie/bed_noChrM/{smp}.bed",
+    a2="50_175/bed_noChrM/{smp}.bed",
+    a3="180_250/bed_noChrM/{smp}.bed"
+  output:
+    o1=directory("homer/{smp}"),
+    o2=directory("50_175/homer/{smp}"),
+    o3=directory("180_250/homer/{smp}")
+  params:
+    mem = "40G"
+  shell:
+    '''
+    module load homer/4.11.1
+    makeTagDirectory {output.o1} {input.a1} -format bed -forceBED
+    makeTagDirectory {output.o2} {input.a2} -format bed -forceBED
+    makeTagDirectory {output.o3} {input.a3} -format bed -forceBED
+    '''
+
+rule mk_bg:
+  input:
+    a1="homer/{smp}",
+    a2="50_175/homer/{smp}",
+    a3="180_250/homer/{smp}"
+  output:
+    o1="homer/bw/{smp}.bg",
+    o2="50_175/homer/bw/{smp}.bg",
+    o3="180_250/homer/bw/{smp}.bg"
+  params:
+    mem = "60G"
+  shell:
+    '''
+    module load homer/4.11.1
+    makeUCSCfile {input.a1} -noheader > {output.o1}
+    makeUCSCfile {input.a2} -noheader > {output.o2}
+    makeUCSCfile {input.a3} -noheader > {output.o3}
+    '''
+
+rule mk_bw:
+  input:
+    a1="homer/bw/{smp}.bg",
+    a2="50_175/homer/bw/{smp}.bg",
+    a3="180_250/homer/bw/{smp}.bg"
+  output:
+    o1="homer/bw/{smp}.bw",
+    o2="50_175/homer/bw/{smp}.bw",
+    o3="180_250/homer/bw/{smp}.bw"
+  params:
+    g_size=config["genome_size"]["mm10"],
+    mem = "60G"
+  shell:
+    '''
+    module load ucsc/422
+    bedGraphToBigWig {input.a1} {params.g_size} {output.o1}
+    bedGraphToBigWig {input.a2} {params.g_size} {output.o2}
+    bedGraphToBigWig {input.a3} {params.g_size} {output.o3}
+    '''
+#rule macs1_peak_anno:
+#  input: "50_175/macs1/peak/s05_peaks.bed",  # adjust this so it's the sample of the largest size (so it will finish hte last)
+#  output:"50_175/macs1/peak/TagCount.xls",
+#  params:
+#    mem = "10G"
+#  shell:
+#    '''
+#    module load homer
+#    cd 50_175/macs1/peak/
+#    mergePeaks -d given *peaks.bed -venn venn.out > mergedPeaks.xls
+#    annotatePeaks.pl mergedPeaks.xls mm10 -size given -d ../../../homer/s*/ -annStats anno_stat.xls > TagCount.xls
+#    '''
+#NOTE: if there is control use input_2_patch to control in input section and -c input_2 in the
+## shell section.
+rule macs2_peak_calling:
+  input: "50_175/bed_noChrM/{smp}.bed"
+  output: "50_175/macs2/peak/{smp}_summits.bed"
+  params:
+    name="{smp}",
+    mem = "10G",
+    g = config["macs1"]["mm10"]
+  shell:
+    '''
+    mkdir -p 50_175/macs2/peak/
+    cd 50_175/macs2/peak/
+    module load macs/2.2.7.1
+    macs2 callpeak -t ../../../{input} -f BED -g {params.g} -n {params.name} \
+    --nomodel --shift -75 --extsize 150 -p 0.01 -B --SPMR --keep-dup all --call-summits \
+    2> {params.name}.out
+    '''
+
+rule mk_macs2_peak_bw:
+  input:
+    a1= "50_175/homer/bw/{smp}.bg",
+    a2= "50_175/macs2/peak/{smp}_summits.bed"
+  output:
+    o1= "50_175/macs2/bg/{smp}.bg",
+    o2= "50_175/macs2/bw/{smp}.bw"
+  params:
+    g_size=config["genome_size"]["mm10"],
+    mem = "20G"
+  shell:
+    '''
+    module load bedtools/2.27.1 ucsc/380
+    intersectBed -u -a {input.a1} -b {input.a2} > {output.o1}
+    bedGraphToBigWig {output.o1} {params.g_size} {output.o2}
+    '''
+
+rule macs2_all_data:
+  input: "bowtie/bed_noChrM/{smp}.bed"
+  output: "macs2/peak/{smp}_summits.bed"
+  params:
+    name="{smp}",
+    mem = "24G",
+    g = config["macs1"]["mm10"]
+  shell:
+    '''
+    mkdir -p macs2/peak/
+    cd macs2/peak/
+    module load macs/2.2.7.1                                          
+    macs2 callpeak -t ../../{input} -f BED -g {params.g} -n {params.name} \
+    --nomodel --shift -75 --extsize 150 -p 0.01 -B --SPMR --keep-dup all --call-summits \
+    2> {params.name}.out
+    '''
+
+rule mk_macs2_all_data_bw:
+  input:
+    a1="homer/bw/{smp}.bg",
+    a2="macs2/peak/{smp}_summits.bed"
+  output:           
+    o1="macs2/bg/{smp}.bg",
+    o2="macs2/bw/{smp}.bw"
+  params:
+    g_size=config["genome_size"]["mm10"],
+    mem = "40G"
+  shell:
+    '''
+    module load bedtools/2.30.0 ucsc/422
+    intersectBed -u -a {input.a1} -b {input.a2} > {output.o1}
+    bedGraphToBigWig {output.o1} {params.g_size} {output.o2}
+    '''
+
+rule macs1_peak_calling: # better than the 1st macs1 rule, which needs changed like this
+  input: "50_175/bed_noChrM/{smp}.bed"
+  output:
+    o1="50_175/macs1/peak/{smp}_peaks.bed",
+    o2="50_175/macs1/peak/{smp}_peaks.xls",
+    o3="50_175/macs1/peak/{smp}.out"
+  params:
+    name="{smp}",
+    mem = "10G",
+    g = config["macs1"]["mm10"]
+  shell:
+    '''
+    mkdir -p 50_175/macs1/peak/
+    cd 50_175/macs1/peak/
+    module load macs/1.4.2
+    macs -t ../../../{input} -f BED -g {params.g} -n {params.name} -B -S -p 1e-5 2> {params.name}.out
+    '''
+
+rule mk_macs1_peak_bw:
+  input:
+    a1="50_175/homer/bw/{smp}.bg",
+    a2="50_175/macs1/peak/{smp}_peaks.bed"
+  output:
+    o1="50_175/macs1/bg/{smp}.bg",
+    o2="50_175/macs1/bw/{smp}.bw"
+  params:
+    g_size=config["genome_size"]["mm10"],
+    mem = "20G"
+  shell:
+    '''
+    module load bedtools/2.30.0 ucsc/422
+    intersectBed -u -a {input.a1} -b {input.a2} > {output.o1}
+    bedGraphToBigWig {output.o1} {params.g_size} {output.o2}
+    '''
+
+rule macs1_all_data:
+  input: "bowtie/bed_noChrM/{smp}.bed"
+  output:
+    o1="macs1/peak/{smp}_peaks.bed",
+    o2="macs1/peak/{smp}_peaks.xls",
+    o3="macs1/peak/{smp}.out"
+  params:
+    name="{smp}",
+    mem = "24G",
+    g = config["macs1"]["mm10"]
+  shell:
+    '''  
+    mkdir -p macs1/peak/
+    cd macs1/peak/
+    module load macs/1.4.2
+    macs -t ../../{input} -f BED -g {params.g} -n {params.name} -B -S -p 1e-5 2> {params.name}.out
+    '''
+
+rule mk_macs1_all_data_bw:
+  input:
+    a1="homer/bw/{smp}.bg",
+    a2="macs1/peak/{smp}_peaks.bed"
+  output:
+    o1="macs1/bg/{smp}.bg",
+    o2="macs1/bw/{smp}.bw"
+  params:
+    g_size=config["genome_size"]["mm10"],
+    mem = "40G"
+  shell:
+    '''
+    module load bedtools/2.30.0 ucsc/422
+    intersectBed -u -a {input.a1} -b {input.a2} > {output.o1}
+    bedGraphToBigWig {output.o1} {params.g_size} {output.o2}
+    '''
+

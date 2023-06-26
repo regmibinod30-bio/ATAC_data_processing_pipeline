@@ -1,0 +1,27 @@
+genome_size:
+  mm9:  /data/jiangk/annotation/BDMS/snake/genomes/mm9.genome
+  mm10: /data/regmib2/scripts/BDMDS/ref_files/mm10.chrom.sizes
+
+bowtie_index:
+  mm9: /fdb/igenomes/Mus_musculus/UCSC/mm9/Sequence/BowtieIndex/genome
+  mm10: /fdb/igenomes/Mus_musculus/UCSC/mm10/Sequence/BowtieIndex/genome
+
+bowtie2_index:
+  mm9: /fdb/igenomes/Mus_musculus/UCSC/mm9/Sequence/Bowtie2Index/genome
+  mm10: /fdb/igenomes/Mus_musculus/UCSC/mm10/Sequence/Bowtie2Index/genome
+
+salmon_index:
+  vM24: /data/jiangk/annotation/BDMS/salmon/gencode.vM24_salmon_1.0.0/
+
+gtf:
+  mm9: /fdb/igenomes/Mus_musculus/UCSC/mm9/Annotation/Genes/genes.gtf
+  mm10: /fdb/igenomes/Mus_musculus/UCSC/mm10/Annotation/Genes/genes.gtf
+
+black_list:
+  #mm9:  /data/jiangk/annotation/BDMS/snake/genomes/repeats/mm9_rpt.bed
+  mm10: /data/regmib2/scripts/BDMDS/ref_files/mm10-blacklist.v2.bed
+  #mm10: /data/jiangk/annotation/BDMS/snake/repeats/mm10_rpt_v2.bed # Should be very cautious, IsaishR point it out on 20200212
+
+macs1:
+  mm9: mm
+  mm10: mm

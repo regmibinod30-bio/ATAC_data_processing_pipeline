@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # bowtie2bed.py: create a bed file out of a bowtie output
-# 2/5/09 by HW Sun & L Wei, NIAMS
-# 5/27/14: algorithm change, use 'with', it reads only 1 line at a time into RAM
+
 
 import sys, os
 
@@ -12,7 +11,7 @@ def help():
 #        specifically tailored to make input files for make-graph-file.py
 # related programs: bowtie, run-graph.py, make-graph-file.py, run-make-graph-file-by-chrom.py
 # need python 2.7.6 or above (include "module load python/2.7.6;" in a swarm file
-# last modified: 05/27/14
+
 """
 
 if sys.argv[1] == "-h":
